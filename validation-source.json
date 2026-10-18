@@ -1,0 +1,11 @@
+{
+  "url": "https://openfoodfacts-ds.s3.eu-west-3.amazonaws.com/openfoodfacts-products.jsonl.gz?versionId=VILumlWXh8J9mlPCmokEeMpO11A6lEpI",
+  "headers": {
+    "Last-Modified": "Sun, 18 Oct 2026 06:41:48 GMT",
+    "ETag": "\"395f715cf569f60f5f72ad119cdc9087-786\"",
+    "x-amz-version-id": "VILumlWXh8J9mlPCmokEeMpO11A6lEpI",
+    "Content-Length": "13179356850"
+  },
+  "size": 13179356850,
+  "sha256": "1e8cbd8e00d78d42ed2cf419dd4020964cb37621076a67ee31667913be99ae37"
+}

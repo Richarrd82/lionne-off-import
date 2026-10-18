@@ -50,3 +50,55 @@ Source changes must produce a new method/release with new checksums. This
 release contains no daily-delta processing, correction submission or consumer
 API. App access controls do not limit the rights granted under the ODbL.
 See NOTICES.md for the separate source and image licences.
+
+
+## Calculation validation — 18 October 2026
+
+The original 21,085-record review catalogue remains separate. This extension
+checks the 9,469 preliminary-pass records against the official full JSON source,
+which includes comparison modifiers omitted by the Parquet projection. Only
+passing records become eligible for calculations; they remain **unverified**.
+No proprietary corrections, customer information or private recipe data enter
+this method or the published evidence.
+
+The reproducible inputs are the original Parquet release above, the pinned
+worldwide JSONL export in `validation-source.json`, and the 150 preserved,
+allowlisted live API responses in `evidence/pilot-20261018/`. The pilot includes
+100 preliminary-pass, 25 review and 25 incomplete products, chosen by sorting
+SHA-256 of source-qualified IDs within each group. It is not a random estimate
+of overall catalogue accuracy. Live evidence overrides export evidence for
+those selected products. No live requests are needed to reproduce this run.
+
+From this repository root, after reproducing the original catalogue:
+
+```sh
+python3 method/download-jsonl.py   'https://openfoodfacts-ds.s3.eu-west-3.amazonaws.com/openfoodfacts-products.jsonl.gz?versionId=VILumlWXh8J9mlPCmokEeMpO11A6lEpI'   products-20261018.jsonl.gz
+python3 method/filter-jsonl.py method/reproduced-cz/records.ndjson   products-20261018.jsonl.gz filtered.ndjson
+python3 method/validation-tests.py
+python3 method/build-validation.py   --records method/reproduced-cz/records.ndjson   --pilot evidence/pilot-20261018   --bulk filtered.ndjson --bulk-manifest validation-source.json   --output validated-cz --checked-at 2026-10-18T22:00:00Z   --release off-cz-803f01305a4c-7402877b6edc   --method-url https://github.com/Richarrd82/lionne-off-import/tree/REPLACE_WITH_THIS_COMMIT
+```
+
+Replace the final placeholder with the immutable commit containing these files.
+The manifest pins that method URL; the record content hash and validation ID
+are deterministic for these inputs. Reports count source differences including
+newly understood qualifiers, not just upstream numeric edits. The conservative
+rules withhold any ambiguous basis, prepared/serving-only nutrition, missing
+core value, changed nutrition, qualifier, invalid barcode, upstream error or
+plausibility failure. They never infer food density, change missing values to
+zero, or convert a less-than bound into an exact number. Qualified values retain
+their operator, bound and reported units in the evidence.
+
+`_100g` nutrient fields are normalized OFF values, including for explicit
+100 ml records; input-unit metadata is checked but is not applied a second
+time. A 100g entry with volume-package or beverage hints requires label review.
+The only energy conversion is explicit kJ / 4.184. Canonical GTIN aliases with
+conflicting eligible nutrition are withheld. Passing the rules is not a
+claim of label accuracy or current Czech store availability.
+
+`fetch-pilot.py` is provided for future runs and uses a 4.2-second interval,
+respecting the published 15 product requests/minute limit. Large refreshes use
+exports; the app does not call OFF once per search. A future run needs its own
+pinned inputs, evidence and publication. Old commits remain available for saved
+source revisions. The same ODbL/DbCL and image notices above apply to all added
+evidence and outputs; MIT applies only to code. Source method publication does
+not itself settle the legal status of every combined use or exported recipe.
