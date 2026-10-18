@@ -66,8 +66,8 @@ worldwide JSONL export in `validation-source.json`, and the 150 preserved,
 allowlisted live API responses in `evidence/pilot-20261018/`. The pilot includes
 100 preliminary-pass, 25 review and 25 incomplete products, chosen by sorting
 SHA-256 of source-qualified IDs within each group. It is not a random estimate
-of overall catalogue accuracy. Live evidence overrides export evidence for
-those selected products. No live requests are needed to reproduce this run.
+of overall catalogue accuracy. The full cohort uses export evidence, including the newer nutrition schema.
+For pilot products the live evidence must also pass, with the same product revision. No live requests are needed to reproduce this run.
 
 From this repository root, after reproducing the original catalogue:
 
@@ -102,3 +102,21 @@ pinned inputs, evidence and publication. Old commits remain available for saved
 source revisions. The same ODbL/DbCL and image notices above apply to all added
 evidence and outputs; MIT applies only to code. Source method publication does
 not itself settle the legal status of every combined use or exported recipe.
+
+
+### Both nutrition schema versions
+
+Rules `off-calculation-2` support legacy `nutriments` and the 3.5+
+`nutrition.aggregated_set` representation. The latter gives explicit preparation,
+per-100 basis and per-nutrient source, all retained in evidence. Its declared
+`value` takes precedence; `value_computed` never fills a missing label value.
+Estimated or unrecognized nutrient sources and non-normalized aggregate units
+are withheld. Recognized aggregate sources are packaging, manufacturer and
+USDA; automatic acceptance does not turn them into human-verified values.
+The original legacy live pilot remains published; each full-cohort pilot row
+retains the independent live comparison and source hash. The bulk source
+preserves fields not returned by the older API representation.
+
+Schema references (OFF-maintained primary documentation):
+- https://openfoodfacts.github.io/documentation/docs/Product-Opener/schemas/schemas/product_nutrition_v3.5/
+- https://github.com/openfoodfacts/openfoodfacts-server/blob/main/docs/api/ref-api-and-product-schema-change-log.md

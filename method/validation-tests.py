@@ -53,5 +53,26 @@ class ValidationTests(unittest.TestCase):
         n["energy-kj_modifier"]="<";self.assertFalse(self.check()["eligible"]);self.assertIsNone(self.check()["nutrition"]["values"]["kcal"])
     def test_source_failure_has_no_eligibility(self):
         r=validate(self.imported,{"status":"unavailable"},"2026-10-18T21:00:00Z","live_api");self.assertFalse(r["eligible"]);self.assertEqual(r["issues"],["source_unavailable"])
+    def modern(self):
+        old=self.product.pop("nutriments");self.product.pop("nutrition_data")
+        fields=[key[:-5] for key in old if key.endswith("_100g")]
+        nutrients={f:{"value":old[f+"_100g"],"unit":old[f+"_unit"],"source":"packaging","source_index":0,"source_per":"100g"} for f in fields}
+        self.product["nutrition"]={"aggregated_set":{"per":"100g","preparation":"as_sold","nutrients":nutrients}}
+        return nutrients
+    def test_modern_schema_uses_declared_normalized_values_and_retains_source(self):
+        n=self.modern();n["energy-kcal"]["value_computed"]=999
+        r=self.check();self.assertTrue(r["eligible"]);self.assertEqual(r["nutrition"]["values"]["kcal"],57)
+        self.assertEqual(r["nutrition"]["nutrientSources"]["proteins"]["source"],"packaging")
+    def test_modern_estimate_is_not_treated_as_declared_nutrition(self):
+        n=self.modern();n["proteins"]["source"]="estimate"
+        self.assertIn("nutrient_source_needs_review:proteins",self.check()["issues"])
+    def test_modern_computed_only_energy_does_not_fill_missing_label(self):
+        n=self.modern();del n["energy-kcal"]["value"];n["energy-kcal"]["value_computed"]=57
+        self.assertIsNone(self.check()["nutrition"]["values"]["kcal"]);self.assertFalse(self.check()["eligible"])
+    def test_modern_qualifiers_preparation_and_units_are_checked(self):
+        n=self.modern();n["fat"]["modifier"]="<";n["proteins"]["unit"]="mg"
+        self.product["nutrition"]["aggregated_set"]["preparation"]="prepared"
+        r=self.check();self.assertIsNone(r["nutrition"]["values"]["fatG"])
+        self.assertIn("as_sold_nutrition_unconfirmed",r["issues"]);self.assertIn("normalized_unit_needs_review:proteins",r["issues"])
 
 if __name__ == "__main__": unittest.main()

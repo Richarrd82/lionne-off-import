@@ -34,12 +34,22 @@ validations, sources = [], {}
 for r in selection:
     code = r["sourceID"]
     e = api.get(code, {})
-    if e.get("status") not in ("found", "not_found"):
+    if args.bulk or e.get("status") not in ("found", "not_found"):
         e = {"product": bulk.get(code), "status": "found" if code in bulk else "not_found" if args.bulk else "unavailable"}
         method, checked = "official_jsonl", args.checked_at
     else:
         method, checked = "live_api", e["checkedAt"]
     v = validate(r, e, checked, method)
+    live = api.get(code, {})
+    if args.bulk and live.get("status") in ("found", "not_found"):
+        lv = validate(r, live, live["checkedAt"], "live_api")
+        v["liveComparison"] = {"checkedAt": lv["checkedAt"], "sourceRevision": lv["sourceRevision"], "sourceSHA256": lv["sourceSHA256"], "issues": lv["issues"]}
+        # The bulk snapshot preserves the newer schema and nutrient provenance;
+        # the independent live pilot must also agree before enabling a product.
+        v["issues"] = sorted(set(v["issues"] + lv["issues"]))
+        if v["sourceRevision"] != lv["sourceRevision"]:
+            v["issues"].append("live_pilot_revision_changed")
+        v["eligible"] = not v["issues"]
     validations.append(v)
     sources[code] = e.get("product") or {}
 groups = defaultdict(list)
@@ -64,7 +74,7 @@ for v in validations:
                      "basis": v["nutrition"]["basis"], "preparation": "as_sold", "verification": "unverified", "verifiedBy": None, "verifiedAt": None,
                      "nutrients": {k: v["nutrition"]["values"][k] for k in CORE},
                      "source": {"kind": "licensed_database", "provider": "open_food_facts", "reference": r["provenance"]["sourceURL"], "observedAt": v["checkedAt"],
-                                "license": "ODbL-1.0", "contentsLicense": "DbCL-1.0", "attribution": "Open Food Facts contributors", "revision": v["sourceRevision"], "rawSHA256": v["sourceSHA256"], "validationID": run, "methodURL": args.method_url}}
+                                "license": "ODbL-1.0", "contentsLicense": "DbCL-1.0", "attribution": "Open Food Facts contributors", "revision": v["sourceRevision"], "rawSHA256": v["sourceSHA256"], "validationID": run, "methodURL": args.method_url, "nutrientSources": v["nutrition"]["nutrientSources"]}}
         food = {"id": v["id"], "revision": v["sourceRevision"], "sourceRef": source_ref, "eligible": True, "sourceLabel": "Open Food Facts · automatically checked",
                 "document": {"name": source.get("product_name_cs") or source.get("product_name_en") or source.get("product_name") or r["name"], "brand": source.get("brands") or r["brand"],
                              "pack": source.get("quantity") or r["pack"], "aliases": [], "category": "Open Food Facts", "portions": [], "barcodes": [v["sourceID"]], "photo": None,

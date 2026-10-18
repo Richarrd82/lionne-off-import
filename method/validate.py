@@ -10,10 +10,10 @@ import re
 from collections import Counter
 from normalize import canonical, digest, gtin, number
 
-RULES = "off-calculation-1"
+RULES = "off-calculation-2"
 FIELDS = {"kcal": "energy-kcal", "proteinG": "proteins", "carbsG": "carbohydrates", "fatG": "fat", "sugarsG": "sugars", "saturatedFatG": "saturated-fat", "fiberG": "fiber", "saltG": "salt"}
 CORE = ("kcal", "proteinG", "carbsG", "fatG")
-SOURCE_FIELDS = ["code", "rev", "last_modified_t", "product_name", "product_name_cs", "product_name_en", "brands", "quantity", "product_quantity_unit", "nutrition_data", "nutrition_data_per", "nutrition_data_prepared", "nutrition_data_prepared_per", "no_nutrition_data", "obsolete", "countries_tags", "categories_tags", "data_quality_errors_tags", "nutriments", "serving_size", "serving_quantity", "serving_quantity_unit"]
+SOURCE_FIELDS = ["nutrition", "schema_version", "code", "rev", "last_modified_t", "product_name", "product_name_cs", "product_name_en", "brands", "quantity", "product_quantity_unit", "nutrition_data", "nutrition_data_per", "nutrition_data_prepared", "nutrition_data_prepared_per", "no_nutrition_data", "obsolete", "countries_tags", "categories_tags", "data_quality_errors_tags", "nutriments", "serving_size", "serving_quantity", "serving_quantity_unit"]
 
 
 def project_evidence(p):
@@ -37,6 +37,7 @@ def validate(imported, evidence, checked_at, method):
     issues, changes, qualifiers = [], [], {}
     values = {k: None for k in FIELDS}
     unit = None
+    nutrient_sources = {}
     if not p:
         issues.append("source_not_found" if evidence.get("status") == "not_found" else "source_unavailable")
     else:
@@ -52,7 +53,11 @@ def validate(imported, evidence, checked_at, method):
             issues.append("czech_country_tag_missing")
         if p.get("data_quality_errors_tags"):
             issues.append("upstream_quality_error")
-        per = p.get("nutrition_data_per")
+        aggregate = (p.get("nutrition") or {}).get("aggregated_set")
+        modern = isinstance(aggregate, dict)
+        if p.get("nutrition") is not None and not modern:
+            issues.append("nutrition_schema_needs_review")
+        per = aggregate.get("per") if modern else p.get("nutrition_data_per")
         unit = "g" if per == "100g" else "ml" if per == "100ml" else None
         volume_hint = (p.get("product_quantity_unit") in ("ml", "cl", "dl", "l")
                        or p.get("serving_quantity_unit") in ("ml", "cl", "dl", "l")
@@ -62,9 +67,27 @@ def validate(imported, evidence, checked_at, method):
             unit = None
         if unit is None:
             issues.append("nutrition_basis_needs_label")
-        if p.get("nutrition_data") not in ("on", True, 1):
+        as_sold = aggregate.get("preparation") == "as_sold" if modern else p.get("nutrition_data") in ("on", True, 1)
+        if not as_sold:
             issues.append("as_sold_nutrition_unconfirmed")
         n = p.get("nutriments") or {}
+        if modern:
+            # API 3.5+ stores normalized values and per-nutrient provenance.
+            # Never substitute value_computed for a missing declared value.
+            n = {}
+            for field in [*FIELDS.values(), "energy-kj"]:
+                nutrient = (aggregate.get("nutrients") or {}).get(field) or {}
+                if not nutrient:
+                    continue
+                n.update({field + "_100g": nutrient.get("value"), field + "_unit": nutrient.get("unit"),
+                          field + "_modifier": nutrient.get("modifier"), field + "_value": nutrient.get("value")})
+                nutrient_sources[field] = {k: nutrient.get(k) for k in ("source", "source_index", "source_per")}
+                if field != "energy-kj" and number(nutrient.get("value")) is not None:
+                    if nutrient.get("source") not in ("packaging", "manufacturer", "usda"):
+                        issues.append("nutrient_source_needs_review:" + field)
+                    expected_unit = "kcal" if field == "energy-kcal" else "g"
+                    if nutrient.get("unit") != expected_unit:
+                        issues.append("normalized_unit_needs_review:" + field)
         for key, field in FIELDS.items():
             value = number(n.get(field + "_100g"))
             modifier = n.get(field + "_modifier")
@@ -85,6 +108,8 @@ def validate(imported, evidence, checked_at, method):
                     issues.append("qualified_core_nutrient:kcal")
                 elif n.get("energy-kj_unit") == "kJ":
                     value = number(n["energy-kj_100g"]) / 4.184
+                    if modern and nutrient_sources.get("energy-kj", {}).get("source") not in ("packaging", "manufacturer", "usda"):
+                        issues.append("nutrient_source_needs_review:energy-kj")
                 else:
                     issues.append("unit_needs_review:kcal")
             values[key] = value
@@ -117,7 +142,7 @@ def validate(imported, evidence, checked_at, method):
             "eligible": not issues, "verification": "unverified", "checkedAt": checked_at, "method": method,
             "sourceRevision": p.get("rev") if p else None, "sourceLastModifiedUnix": p.get("last_modified_t") if p else None,
             "sourceSHA256": source_hash, "importSHA256": digest(imported), "issues": sorted(set(issues)), "changes": changes,
-            "nutrition": {"basis": {"amount": 100, "unit": unit}, "preparation": "as_sold", "values": values, "qualifiers": qualifiers}}
+            "nutrition": {"basis": {"amount": 100, "unit": unit}, "preparation": "as_sold", "values": values, "qualifiers": qualifiers, "nutrientSources": nutrient_sources}}
 
 
 def report(rows):
