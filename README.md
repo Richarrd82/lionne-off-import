@@ -1,3 +1,13 @@
+# Current method: full Czech catalogue validation
+
+The 19 October revision validates all 21,085 Czech source records with
+`off-calculation-3`, separates optional warnings from calculation blockers,
+and routes exceptions to source-label review. See
+[the review workflow](method/REVIEW-WORKFLOW.md) for exact semantics,
+reproduction, image evidence and correction publication. All records remain
+unverified. The earlier release instructions below describe the source snapshot
+and previous validation pass; the current build processes the full catalogue.
+
 # LIONNE Czech Open Food Facts method
 
 This self-contained archive contains the exact filtering and normalization
@@ -120,3 +130,4 @@ preserves fields not returned by the older API representation.
 Schema references (OFF-maintained primary documentation):
 - https://openfoodfacts.github.io/documentation/docs/Product-Opener/schemas/schemas/product_nutrition_v3.5/
 - https://github.com/openfoodfacts/openfoodfacts-server/blob/main/docs/api/ref-api-and-product-schema-change-log.md
+

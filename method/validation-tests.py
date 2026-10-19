@@ -4,12 +4,13 @@ import pathlib
 import sys
 import unittest
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "method"))
 from validate import validate
+from review import label_photos, apply_accepted_review
 
 class ValidationTests(unittest.TestCase):
     def setUp(self):
-        self.product = {"code":"4006381333931","rev":2,"countries_tags":["en:czech-republic"],"nutrition_data":"on","nutrition_data_per":"100g","nutriments":{}}
+        self.product = {"code":"4006381333931","product_name":"Test food","rev":2,"countries_tags":["en:czech-republic"],"nutrition_data":"on","nutrition_data_per":"100g","nutriments":{}}
         vals={"kcal":57,"proteinG":5,"carbsG":7,"fatG":1,"sugarsG":4,"saturatedFatG":.5,"fiberG":None,"saltG":.1}
         for k,f in [("kcal","energy-kcal"),("proteinG","proteins"),("carbsG","carbohydrates"),("fatG","fat"),("sugarsG","sugars"),("saturatedFatG","saturated-fat"),("fiberG","fiber"),("saltG","salt")]:
             if vals[k] is not None:
@@ -36,7 +37,7 @@ class ValidationTests(unittest.TestCase):
     def test_optional_qualifier_is_visible_even_if_import_was_missing(self):
         self.imported["nutrition"]["values"]["saltG"]=None
         self.product["nutriments"]["salt_modifier"]="~"
-        r=self.check();self.assertFalse(r["eligible"]);self.assertIn("qualified_optional_nutrient:saltG",r["issues"])
+        r=self.check();self.assertTrue(r["eligible"]);self.assertIn("qualified_optional_nutrient:saltG",r["warnings"])
         self.assertIsNone(r["nutrition"]["values"]["saltG"])
     def test_prepared_or_serving_basis_is_not_assumed_as_sold(self):
         self.product["nutrition_data_per"]="serving";self.assertFalse(self.check()["eligible"])
@@ -74,5 +75,43 @@ class ValidationTests(unittest.TestCase):
         self.product["nutrition"]["aggregated_set"]["preparation"]="prepared"
         r=self.check();self.assertIsNone(r["nutrition"]["values"]["fatG"])
         self.assertIn("as_sold_nutrition_unconfirmed",r["issues"]);self.assertIn("normalized_unit_needs_review:proteins",r["issues"])
+
+    def test_preliminary_status_does_not_override_current_complete_evidence(self):
+        self.imported["quality"]["status"]="incomplete"
+        self.imported["nutrition"]["values"]["proteinG"]=None
+        self.assertTrue(self.check()["eligible"])
+    def test_missing_name_remains_blocked(self):
+        del self.product["product_name"]
+        self.assertIn("product_name_missing",self.check()["issues"])
+    def test_optional_estimates_are_unknown_but_core_estimates_block(self):
+        n=self.modern();n["salt"]["source"]="estimate"
+        r=self.check();self.assertTrue(r["eligible"]);self.assertIsNone(r["nutrition"]["values"]["saltG"])
+        n["proteins"]["source"]="estimate";self.assertFalse(self.check()["eligible"])
+    def test_known_basis_change_is_a_conflict(self):
+        self.product["nutrition_data_per"]="100ml"
+        self.assertIn("nutrition_changed_since_import",self.check()["issues"])
+    def test_unknown_basis_can_be_completed_without_assuming_density(self):
+        self.imported["nutrition"]["basis"]["unit"]=None
+        self.assertTrue(self.check()["eligible"])
+    def test_optional_contradiction_still_needs_review(self):
+        self.product["nutriments"]["sugars_100g"]=90
+        self.assertFalse(self.check()["eligible"])
+
+    def test_photo_resolution_keeps_revision_credit_and_czech_preference(self):
+        p={"code":"4006381333931","images":{"selected":{"nutrition":{"fr":{"rev":"4","imgid":"1"},"cs":{"rev":"7","imgid":"2"}}},"uploaded":{"2":{"uploader":"tester"}}}}
+        photos=label_photos(p);self.assertEqual(photos[0]["credit"],"tester")
+        self.assertIn("nutrition_cs.7.full.jpg",photos[0]["url"])
+    def test_accepted_corrections_require_matching_evidence_and_exact_values(self):
+        v=self.check();v["reviewGroup"]="label_needed";v["eligible"]=False;v["issues"]=["core_nutrition_incomplete"]
+        n={"basis":{"amount":100,"unit":"g"},"preparation":"as_sold","values":{k:v["nutrition"]["values"][k] for k in ("kcal","proteinG","carbsG","fatG")},"qualifiers":{}}
+        result={"canAccept":True,"issues":[],"warnings":[],"candidate":{"name":"Food","nutrition":n},"transcription":{k:{"quote":"Printed label"} for k in n["values"]},"photos":[{"sha256":"a"*64}]}
+        item={"status":"accepted","sourceID":v["sourceID"],"validation":{"sourceSHA256":v["sourceSHA256"]},"result":result}
+        repaired=apply_accepted_review(copy.deepcopy(v),item)
+        self.assertTrue(repaired["eligible"]);self.assertEqual(repaired["verification"],"unverified")
+        self.assertIsNone(repaired["nutrition"]["values"]["saltG"]);self.assertIn("previousNutrition",repaired["acceptedReview"])
+        item["validation"]["sourceSHA256"]="stale"
+        with self.assertRaises(ValueError): apply_accepted_review(copy.deepcopy(v),item)
+        item["validation"]["sourceSHA256"]=v["sourceSHA256"];n["qualifiers"]={"fatG":{"operator":"<","value":1}}
+        with self.assertRaises(ValueError): apply_accepted_review(copy.deepcopy(v),item)
 
 if __name__ == "__main__": unittest.main()

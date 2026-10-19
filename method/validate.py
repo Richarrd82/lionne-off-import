@@ -1,7 +1,7 @@
 """OFF-only validation against the full JSON representation, including modifiers.
 
 No private foods or users enter this module. Eligibility is an automated check,
-never a human verification. An upstream nutrition change requires review.
+never a human verification. A conflicting core nutrition change requires review. Optional uncertainty is retained separately.
 """
 import hashlib
 import json
@@ -10,10 +10,10 @@ import re
 from collections import Counter
 from normalize import canonical, digest, gtin, number
 
-RULES = "off-calculation-2"
+RULES = "off-calculation-3"
 FIELDS = {"kcal": "energy-kcal", "proteinG": "proteins", "carbsG": "carbohydrates", "fatG": "fat", "sugarsG": "sugars", "saturatedFatG": "saturated-fat", "fiberG": "fiber", "saltG": "salt"}
 CORE = ("kcal", "proteinG", "carbsG", "fatG")
-SOURCE_FIELDS = ["nutrition", "schema_version", "code", "rev", "last_modified_t", "product_name", "product_name_cs", "product_name_en", "brands", "quantity", "product_quantity_unit", "nutrition_data", "nutrition_data_per", "nutrition_data_prepared", "nutrition_data_prepared_per", "no_nutrition_data", "obsolete", "countries_tags", "categories_tags", "data_quality_errors_tags", "nutriments", "serving_size", "serving_quantity", "serving_quantity_unit"]
+SOURCE_FIELDS = ["nutrition", "schema_version", "code", "rev", "last_modified_t", "product_name", "product_name_cs", "product_name_en", "brands", "quantity", "product_quantity_unit", "nutrition_data", "nutrition_data_per", "nutrition_data_prepared", "nutrition_data_prepared_per", "no_nutrition_data", "obsolete", "countries_tags", "categories_tags", "data_quality_errors_tags", "nutriments", "serving_size", "serving_quantity", "serving_quantity_unit", "images"]
 
 
 def project_evidence(p):
@@ -34,7 +34,7 @@ def truth(v):
 
 def validate(imported, evidence, checked_at, method):
     p = evidence.get("product")
-    issues, changes, qualifiers = [], [], {}
+    issues, changes, qualifiers, warnings = [], [], {}, []
     values = {k: None for k in FIELDS}
     unit = None
     nutrient_sources = {}
@@ -42,6 +42,8 @@ def validate(imported, evidence, checked_at, method):
         issues.append("source_not_found" if evidence.get("status") == "not_found" else "source_unavailable")
     else:
         p = project_evidence(p)
+        if not any(str(p.get(k) or "").strip() for k in ("product_name_cs", "product_name_en", "product_name")):
+            issues.append("product_name_missing")
         code = str(p.get("code", ""))
         if code != imported["sourceID"] or gtin(code) != imported["gtin14"] or not gtin(code):
             issues.append("barcode_mismatch_or_invalid")
@@ -118,8 +120,12 @@ def validate(imported, evidence, checked_at, method):
                 changes.append({"field": key, "imported": old, "current": value})
         if unit != imported["nutrition"]["basis"]["unit"]:
             changes.append({"field": "basis", "imported": imported["nutrition"]["basis"]["unit"], "current": unit})
-        if changes:
+        # Missing old values/basis are not conflicting observations. Current exact
+        # source values must still pass every identity, unit and plausibility check.
+        if any(c["field"] in (*CORE, "basis") and c["imported"] is not None and c["current"] != c["imported"] for c in changes):
             issues.append("nutrition_changed_since_import")
+        elif changes:
+            warnings.append("source_values_completed_or_optional_changed")
         if any(values[k] is None for k in CORE):
             issues.append("core_nutrition_incomplete")
         if values["kcal"] is not None and values["kcal"] > 950:
@@ -135,16 +141,26 @@ def validate(imported, evidence, checked_at, method):
             energy = 4 * values["proteinG"] + 4 * values["carbsG"] + 9 * values["fatG"] + 2 * (values["fiberG"] or 0)
             if abs(values["kcal"] - energy) > max(20, .15 * values["kcal"]):
                 issues.append("energy_needs_review")
-    if imported["quality"]["status"] != "passes_preliminary_checks":
-        issues.append("preliminary_review_required")
+    # The earlier Parquet classification is a triage hint, not a permanent veto.
+    # Do not promote optional estimates / malformed units into exact numbers.
+    optional = set(FIELDS) - set(CORE)
+    optional_fields = {FIELDS[k]: k for k in optional}
+    for issue in list(issues):
+        reason, _, field = issue.partition(":")
+        key = optional_fields.get(field, field)
+        if key in optional and reason in ("qualified_optional_nutrient", "nutrient_source_needs_review", "normalized_unit_needs_review", "unit_needs_review"):
+            issues.remove(issue)
+            warnings.append(issue)
+            values[key] = None
     source_hash = digest(p) if p else None
     return {"id": imported["id"], "sourceID": imported["sourceID"], "gtin14": imported["gtin14"], "rulesVersion": RULES,
             "eligible": not issues, "verification": "unverified", "checkedAt": checked_at, "method": method,
             "sourceRevision": p.get("rev") if p else None, "sourceLastModifiedUnix": p.get("last_modified_t") if p else None,
-            "sourceSHA256": source_hash, "importSHA256": digest(imported), "issues": sorted(set(issues)), "changes": changes,
+            "sourceSHA256": source_hash, "importSHA256": digest(imported), "issues": sorted(set(issues)), "warnings": sorted(set(warnings)), "changes": changes,
             "nutrition": {"basis": {"amount": 100, "unit": unit}, "preparation": "as_sold", "values": values, "qualifiers": qualifiers, "nutrientSources": nutrient_sources}}
 
 
 def report(rows):
     return {"total": len(rows), "eligible": sum(r["eligible"] for r in rows), "needsReview": sum(not r["eligible"] for r in rows),
+            "warnings": dict(Counter(i for r in rows for i in r.get("warnings", [])).most_common()),
             "issues": dict(Counter(i for r in rows for i in r["issues"]).most_common()), "changed": sum(bool(r["changes"]) for r in rows)}
