@@ -85,7 +85,7 @@ From this repository root, after reproducing the original catalogue:
 python3 method/download-jsonl.py   'https://openfoodfacts-ds.s3.eu-west-3.amazonaws.com/openfoodfacts-products.jsonl.gz?versionId=VILumlWXh8J9mlPCmokEeMpO11A6lEpI'   products-20261018.jsonl.gz
 python3 method/filter-jsonl.py method/reproduced-cz/records.ndjson   products-20261018.jsonl.gz filtered.ndjson
 python3 method/validation-tests.py
-python3 method/build-validation.py   --records method/reproduced-cz/records.ndjson   --pilot evidence/pilot-20261018   --bulk filtered.ndjson --bulk-manifest validation-source.json   --output validated-cz --checked-at 2026-10-18T22:00:00Z   --release off-cz-803f01305a4c-7402877b6edc   --method-url https://github.com/Richarrd82/lionne-off-import/tree/REPLACE_WITH_THIS_COMMIT
+python3 method/build-validation.py   --records method/reproduced-cz/records.ndjson   --pilot evidence/pilot-20261018   --bulk filtered.ndjson --bulk-manifest validation-source.json   --output validated-cz --checked-at 2026-10-19T10:35:00Z   --release off-cz-803f01305a4c-7402877b6edc   --method-url https://github.com/Richarrd82/lionne-off-import/tree/REPLACE_WITH_THIS_COMMIT
 ```
 
 Replace the final placeholder with the immutable commit containing these files.
@@ -93,14 +93,14 @@ The manifest pins that method URL; the record content hash and validation ID
 are deterministic for these inputs. Reports count source differences including
 newly understood qualifiers, not just upstream numeric edits. The conservative
 rules withhold any ambiguous basis, prepared/serving-only nutrition, missing
-core value, changed nutrition, qualifier, invalid barcode, upstream error or
+core value, material nutrition changes, qualifier, invalid barcode, upstream error or
 plausibility failure. They never infer food density, change missing values to
 zero, or convert a less-than bound into an exact number. Qualified values retain
 their operator, bound and reported units in the evidence.
 
 `_100g` nutrient fields are normalized OFF values, including for explicit
 100 ml records; input-unit metadata is checked but is not applied a second
-time. A 100g entry with volume-package or beverage hints requires label review.
+time. A legacy 100g entry with volume-package or beverage hints requires label review; modern explicitly declared units are preserved.
 The only energy conversion is explicit kJ / 4.184. Canonical GTIN aliases with
 conflicting eligible nutrition are withheld. Passing the rules is not a
 claim of label accuracy or current Czech store availability.
@@ -131,3 +131,13 @@ Schema references (OFF-maintained primary documentation):
 - https://openfoodfacts.github.io/documentation/docs/Product-Opener/schemas/schemas/product_nutrition_v3.5/
 - https://github.com/openfoodfacts/openfoodfacts-server/blob/main/docs/api/ref-api-and-product-schema-change-log.md
 
+
+## Review queue refinements — 19 October 2026
+
+Rules `off-calculation-4` preserve modern explicit g/ml declarations, handle
+floating-point noise, and retain small positive nutrient differences as warnings
+under the policy in `method/REVIEW-WORKFLOW.md`. Expected eligible count: 12,173
+of 21,085. No AI corrections or private application data are included.
+`off-label-review-2` applies the same minor-difference classification and avoids
+sending duplicate photo bytes. The 20 previous trial readings are not rerun.
+The exact input and source checksums remain the same.

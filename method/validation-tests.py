@@ -64,6 +64,29 @@ class ValidationTests(unittest.TestCase):
         n=self.modern();n["energy-kcal"]["value_computed"]=999
         r=self.check();self.assertTrue(r["eligible"]);self.assertEqual(r["nutrition"]["values"]["kcal"],57)
         self.assertEqual(r["nutrition"]["nutrientSources"]["proteins"]["source"],"packaging")
+    def test_modern_explicit_basis_is_not_erased_by_pack_volume(self):
+        self.modern();self.product["quantity"]="73 g (100 ml)"
+        r=self.check();self.assertTrue(r["eligible"]);self.assertEqual(r["nutrition"]["basis"]["unit"],"g")
+        self.imported["nutrition"]["basis"]["unit"]=None
+        self.product["nutrition"]["aggregated_set"]["per"]="100ml"
+        self.assertEqual(self.check()["nutrition"]["basis"]["unit"],"ml")
+    def test_minor_source_changes_are_retained_without_paid_review(self):
+        self.product["nutriments"]["carbohydrates_100g"]=7.1
+        r=self.check();self.assertTrue(r["eligible"])
+        self.assertIn("minor_declared_value_change_retained",r["warnings"])
+        self.assertEqual(r["nutrition"]["values"]["carbsG"],7.1)
+        self.assertEqual(r["changes"][0],{"field":"carbsG","imported":7,"current":7.1})
+        self.product["nutriments"]["carbohydrates_100g"]=7.2
+        self.assertIn("nutrition_changed_since_import",self.check()["issues"])
+    def test_tolerance_never_hides_zero_crossing_or_low_value_relative_change(self):
+        for old,current in [(0,.1),(.1,0),(.1,.2)]:
+            self.imported["nutrition"]["values"]["fatG"]=old
+            self.product["nutriments"]["fat_100g"]=current
+            self.assertIn("nutrition_changed_since_import",self.check()["issues"])
+    def test_numeric_noise_is_not_a_change(self):
+        self.product["nutriments"]["energy-kcal_100g"]=57.00000000000001
+        self.assertTrue(self.check()["eligible"])
+        self.assertEqual(self.check()["changes"],[])
     def test_modern_estimate_is_not_treated_as_declared_nutrition(self):
         n=self.modern();n["proteins"]["source"]="estimate"
         self.assertIn("nutrient_source_needs_review:proteins",self.check()["issues"])

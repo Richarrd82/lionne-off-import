@@ -1,7 +1,7 @@
 {
   "LICENSE": "820246e908f88ee623cd226f68bf185cdfaa870e0d3098b036e3fb2a6f6cfdad",
   "NOTICES.md": "80cd527b189f5b7dcdc875eec25cf3cd8cff7f4b4c213c0adfffbf6050d483ba",
-  "README.md": "98c31633cc5e705ec1531d27c2837c787444142fa50790f0eb5074d5ee6eb0f8",
+  "README.md": "28e443caee17251ff9eb27a53baa38b8e0f05386a46d459557855a87b2f0fb02",
   "evidence/pilot-20261018/0045349000397.json": "afabe5dfa0b134e1cb5a55ebf467a0613a4ffb51db479dabd310f5522f37fc45",
   "evidence/pilot-20261018/0725765893277.json": "fdeae108f23053c3da5b5a537bc472f800a3aff2d90cb0bddbdaed0448128d69",
   "evidence/pilot-20261018/0764460212525.json": "8a08c1a7579dde0c45cbc52fca79d07d99dd5aff0ed0990114807cea69bffc12",
@@ -162,11 +162,12 @@
   "method/filter-jsonl.py": "52bdbdee1e14e0c7de52626111f121c1039db4ec005dc75830f1942f539182a9",
   "method/normalize.py": "382f6047a98b034c7766d6e8af726e562fdb2f02e01106227b51cf817ab3ba0d",
   "method/requirements.txt": "284746a389bfbe44aade2f4676c985aec5f247e562ee4a5afa24baa1671695eb",
-  "method/validate.py": "e5def5908f74c89af86a02a8671c83a5414682c383c36d096ba41403d883ada4",
-  "method/validation-tests.py": "7497422769a9dbf4e407bbe2dcffaeb1f78d71789ed3421313efce68fcff1f55",
+  "method/validate.py": "3ef1a278c4fcb8ddae6857f37616f9849779e120949aa59d50a422f593d802cb",
+  "method/validation-tests.py": "78aba0a1b7d0f7d24adc6e7dfef3ba0e830e66f962805899fc6bd0ed8bae29a2",
   "source-manifest.json": "b1c49deee4089c7011cc4faaeafdf39183c478d41518e86a6a14af423178f61c",
   "validation-source.json": "8534b260de2de33a502e3a7cc64ed64ba5322868f398040ecb7a45332b45686b",
   "method/review.py": "ec79e6a18ffd7c767b1e1170fac54383badbda15038589ec8537fc2044e1d217",
-  "method/REVIEW-WORKFLOW.md": "229bade9e944c50922d72d7ab7a560939e319fc730195f9deaed4b8c62c799ae",
-  "method/off-label-review.mjs": "7577e5c5de023170ef811e8b891aa000104959b363ebb9584eff8f8707195975"
+  "method/REVIEW-WORKFLOW.md": "c9e02c9b2d70fb19faf30245c2416ab52b9d3499cf4b6e1ea32f2fa1b5be15b3",
+  "method/off-label-review.mjs": "e26f9021f8b979f277b3fafa12e6af4a2238511dfd82f5485cdf560cdcee9038",
+  "method/off-nutrition-compare.mjs": "0b0688cd9dd0a035c5fc38da39325936107f30f7e8ee7ef825ef18736a031df2"
 }

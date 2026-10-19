@@ -1,5 +1,6 @@
 // OFF-only transcription and validation. No provider SDK or private ingredient writes.
-export const OFF_LABEL_RULES='off-label-review-1';
+import {offValueDifference} from './off-nutrition-compare.mjs';
+export const OFF_LABEL_RULES='off-label-review-2';
 export const CORE=['kcal','proteinG','carbsG','fatG'];
 const text={type:'string'};
 export function offLabelSchema(){
@@ -14,7 +15,7 @@ export function offLabelRequest(images,model='gpt-5.6-terra'){
   text:{format:{type:'json_schema',name:'off_label',strict:true,schema:offLabelSchema()}}};
 }
 export function evaluateOFFLabel(raw,source){
- const issues=[],conflicts=[],values={},qualifiers={};
+ const issues=[],conflicts=[],minorDifferences=[],values={},qualifiers={};
  if(!['g','ml'].includes(raw?.basisUnit)||!raw.basisQuote?.trim())issues.push('Nutrition basis is not readable.');
  if(raw?.preparation!=='as_sold')issues.push('As-sold nutrition is not confirmed.');
  for(const key of CORE){
@@ -26,7 +27,7 @@ export function evaluateOFFLabel(raw,source){
   values[key]=Number(match[2]);
   if(!Number.isFinite(values[key])||values[key]>(key==='kcal'?950:100))issues.push(`${key}: value is outside the accepted range.`);
   const prior=source.nutrition?.values?.[key];
-  if(typeof prior==='number'&&!source.nutrition?.qualifiers?.[key]&&Math.abs(prior-values[key])>Math.max(.01,Math.abs(prior)*.001))conflicts.push({field:key,source:prior,label:values[key]});
+  if(typeof prior==='number'&&!source.nutrition?.qualifiers?.[key]){const difference=offValueDifference(key,prior,values[key]);if(difference==='changed')conflicts.push({field:key,source:prior,label:values[key]});if(difference==='minor')minorDifferences.push({field:key,source:prior,label:values[key]});}
  }
  if(source.nutrition?.basis?.unit&&raw.basisUnit!==source.nutrition.basis.unit)conflicts.push({field:'basis',source:source.nutrition.basis.unit,label:raw.basisUnit});
  if(CORE.every(k=>values[k]!=null)){
@@ -37,10 +38,10 @@ export function evaluateOFFLabel(raw,source){
  const warnings=Array.isArray(raw?.warnings)?raw.warnings.filter(x=>typeof x==='string'&&x.trim()):[];
  if(source.issues?.includes('product_name_missing')&&!raw?.name?.trim())issues.push('The product name is still missing.');
  if(warnings.length)issues.push('The label reader reported uncertainty.');
- const changed=(source.changes??[]).some(c=>[...CORE,'basis'].includes(c.field)&&c.imported!=null);
+ const changed=(source.changes??[]).some(c=>c.field==='basis'?c.imported!=null&&c.current!=null&&c.imported!==c.current:CORE.includes(c.field)&&offValueDifference(c.field,c.imported,c.current)==='changed');
  const category=conflicts.length||changed||source.reviewGroup==='conflicts'?'conflict':'missing_or_basis';
  return {rulesVersion:OFF_LABEL_RULES,transcription:raw,candidate:{name:String(raw?.name??'').slice(0,300),nutrition:{basis:{amount:100,unit:raw?.basisUnit},preparation:raw?.preparation,values,qualifiers}},
-  issues,conflicts,warnings,category,canAccept:issues.length===0,verification:'unverified'};
+  issues,conflicts,minorDifferences,warnings,category,canAccept:issues.length===0,verification:'unverified'};
 }
 export function safeOFFImageURL(value){
  try{const u=new URL(value);return u.origin==='https://images.openfoodfacts.org'&&!u.username&&!u.password&&!u.search&&!u.hash&&/^\/images\/products\/(?:\d+\/)+nutrition_[a-z]{2}\.\d+\.full\.jpg$/.test(u.pathname);}catch{return false;}
@@ -63,7 +64,7 @@ export async function transcribeOFFLabel({key,photos,source,model='gpt-5.6-terra
  if(!key)throw Error('OFF label reading is not configured.');
  const images=[];for(const photo of photos.slice(0,2))images.push(await fetchOFFLabelImage(photo,fetchImpl));
  if(!images.length)throw Error('This product needs a nutrition label photo.');
- const response=await fetchImpl('https://api.openai.com/v1/responses',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},signal:AbortSignal.timeout(65000),body:JSON.stringify(offLabelRequest(images.map(p=>p.image),model))});
+ const response=await fetchImpl('https://api.openai.com/v1/responses',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},signal:AbortSignal.timeout(65000),body:JSON.stringify(offLabelRequest(images.filter((p,i)=>images.findIndex(x=>x.evidence.sha256===p.evidence.sha256)===i).map(p=>p.image),model))});
  if(!response.ok)throw Error(response.status===429?'Label reading is busy. Try again later.':'The AI label request failed.');
  const data=await response.json();if(data.status!=='completed')throw Error('The label response was incomplete.');
  const text=(data.output??[]).flatMap(x=>x.content??[]).filter(x=>x.type==='output_text').map(x=>x.text).join('');

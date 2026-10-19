@@ -10,7 +10,7 @@ import re
 from collections import Counter
 from normalize import canonical, digest, gtin, number
 
-RULES = "off-calculation-3"
+RULES = "off-calculation-4"
 FIELDS = {"kcal": "energy-kcal", "proteinG": "proteins", "carbsG": "carbohydrates", "fatG": "fat", "sugarsG": "sugars", "saturatedFatG": "saturated-fat", "fiberG": "fiber", "saltG": "salt"}
 CORE = ("kcal", "proteinG", "carbsG", "fatG")
 SOURCE_FIELDS = ["nutrition", "schema_version", "code", "rev", "last_modified_t", "product_name", "product_name_cs", "product_name_en", "brands", "quantity", "product_quantity_unit", "nutrition_data", "nutrition_data_per", "nutrition_data_prepared", "nutrition_data_prepared_per", "no_nutrition_data", "obsolete", "countries_tags", "categories_tags", "data_quality_errors_tags", "nutriments", "serving_size", "serving_quantity", "serving_quantity_unit", "images"]
@@ -30,6 +30,24 @@ def pilot(records):
 
 def truth(v):
     return v is True or v == 1 or str(v).lower() in ("on", "true", "yes")
+
+
+def material_change(field, old, current):
+    """Queue policy, not a claim about legal labelling tolerances.
+
+    Keep the exact current declared value and the recorded difference. Ignore
+    floating-point noise. Small positive-to-positive changes (at most 1 kcal /
+    0.1 g AND 2%) need no paid transcription. Units, zero crossings, qualifiers
+    and missing values are never repaired by this tolerance.
+    """
+    if old is None or current is None:
+        return old is not None and current is None
+    if field == "basis":
+        return old != current
+    if math.isclose(old, current, rel_tol=1e-7, abs_tol=1e-6):
+        return False
+    delta = abs(old - current)
+    return not (old > 0 and current > 0 and delta <= (1 if field == "kcal" else .1) + 1e-9 and delta <= .02 * min(old, current) + 1e-9)
 
 
 def validate(imported, evidence, checked_at, method):
@@ -65,7 +83,9 @@ def validate(imported, evidence, checked_at, method):
                        or p.get("serving_quantity_unit") in ("ml", "cl", "dl", "l")
                        or re.search(r"\d\s*(?:ml|cl|dl|l|litres?|liters?)\b", str(p.get("quantity", "")), re.I)
                        or bool(set(p.get("categories_tags") or []) & {"en:beverages", "en:milks", "en:plant-based-milks"}))
-        if unit == "g" and volume_hint:
+        # Legacy OFF's 100g field is shared with liquids. Modern sets explicitly
+        # distinguish 100g and 100ml: a pack volume must not erase that evidence.
+        if not modern and unit == "g" and volume_hint:
             unit = None
         if unit is None:
             issues.append("nutrition_basis_needs_label")
@@ -122,10 +142,12 @@ def validate(imported, evidence, checked_at, method):
             changes.append({"field": "basis", "imported": imported["nutrition"]["basis"]["unit"], "current": unit})
         # Missing old values/basis are not conflicting observations. Current exact
         # source values must still pass every identity, unit and plausibility check.
-        if any(c["field"] in (*CORE, "basis") and c["imported"] is not None and c["current"] != c["imported"] for c in changes):
+        if any(c["field"] in (*CORE, "basis") and material_change(c["field"], c["imported"], c["current"]) for c in changes):
             issues.append("nutrition_changed_since_import")
         elif changes:
             warnings.append("source_values_completed_or_optional_changed")
+            if any(c["field"] in CORE and c["imported"] is not None and c["current"] is not None for c in changes):
+                warnings.append("minor_declared_value_change_retained")
         if any(values[k] is None for k in CORE):
             issues.append("core_nutrition_incomplete")
         if values["kcal"] is not None and values["kcal"] > 950:

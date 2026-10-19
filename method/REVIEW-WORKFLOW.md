@@ -1,10 +1,10 @@
 # Full-catalogue validation and label review — 19 October 2026
 
-`off-calculation-3` validates every Czech record against the pinned full JSONL
+`off-calculation-4` validates every Czech record against the pinned full JSONL
 source. The old Parquet quality status is not a permanent eligibility gate.
 Products still require a current name, valid matching GTIN, a source revision,
 explicit as-sold 100 g/100 ml basis, exact declared core nutrients and plausible
-values. Known core/basis conflicts remain held. Missing old values can be filled
+values. Material core/basis conflicts remain held. Missing old values can be filled
 from explicit current source values. Unknown optional nutrients stay null;
 qualifiers and optional provenance problems become warnings, not food-wide
 blocks. Contradictory nutrition remains a blocker. Eligibility is not human
@@ -49,3 +49,25 @@ The preparation/loading adapter is private application code, not needed for
 reconstruction. It never merges OFF data into independently captured foods.
 Data remains ODbL 1.0 / DbCL 1.0; photos retain their separate CC BY-SA licence.
 The method/alterations publication route does not replace legal review.
+
+## Avoiding unnecessary paid readings
+
+Modern `nutrition.aggregated_set.per` explicitly distinguishes 100g and 100ml;
+pack volume must not erase that declared basis. Legacy `nutrition_data_per=100g`
+with volume hints remains ambiguous. We do not infer food density or ml from
+product names. Floating-point noise and decimal punctuation are not changes.
+
+Small changes between two positive declared numbers (at most 1 kcal / 0.1 g
+AND 2% of the smaller value) do not trigger a paid source-conflict check. Exact
+current values, prior values, warnings and provenance are retained. This is an
+application triage policy, not a legal tolerance or human verification. Zero
+crossings, missing values, units, qualifiers and larger changes remain distinct.
+
+The default paid batch excludes complete records needing only basis/preparation
+confirmation. Those remain held and have an explicit optional reading scope.
+The app shows why a record needs checking and why bulk acceptance is locked,
+with a guided individual-review route. The ten-sample gate remains enforced
+server-side. Identical image bytes are submitted to AI once; both source image
+references and credits remain in the evidence. Existing jobs can carry forward
+across rules-only releases only for unchanged source hashes. No accepted
+corrections are included in this release.
